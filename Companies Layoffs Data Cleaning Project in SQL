@@ -1,0 +1,134 @@
+-- CREATE ALTERNATIVE TABLE 
+CREATE TABLE layoffs_staging3
+LIKE layoffs;
+
+INSERT layoffs_staging3
+SELECT * FROM layoffs;
+
+SELECT *
+FROM layoffs_staging3
+ORDER BY 1;
+
+
+-- REMOVE DUPLICATES
+SELECT *,
+ROW_NUMBER() OVER(
+	PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country, funds_raised_millions
+) as row_num
+FROM layoffs_staging3
+;
+
+WITH cte_duplicate AS
+(
+	SELECT *,
+	ROW_NUMBER() OVER(
+		PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country, funds_raised_millions
+	) as row_num
+	FROM layoffs_staging3
+)
+SELECT *
+FROM cte_duplicate
+WHERE row_num > 1
+;
+
+CREATE TABLE `layoffs_staging4` (
+  `company` text,
+  `location` text,
+  `industry` text,
+  `total_laid_off` int DEFAULT NULL,
+  `percentage_laid_off` text,
+  `date` text,
+  `stage` text,
+  `country` text,
+  `funds_raised_millions` int DEFAULT NULL,
+  `row_num` int
+);
+
+INSERT INTO layoffs_staging4
+SELECT *,
+	ROW_NUMBER() OVER(
+		PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country, funds_raised_millions
+	) as row_num
+	FROM layoffs_staging3
+;
+
+DELETE
+from layoffs_staging4
+WHERE row_num > 1;
+
+SELECT *
+from layoffs_staging4
+WHERE row_num > 1;
+
+
+-- DATA STANDARDIZING
+SELECT *
+FROM layoffs_staging4
+ORDER BY 1;
+
+-- Remove spaces before and after words
+UPDATE layoffs_staging4
+SET company = TRIM(company);
+
+-- Eliminating the same industry but different writing
+UPDATE layoffs_staging4
+SET industry = 'Crypto'
+WHERE industry LIKE 'Crypto%';
+
+-- Eliminating countries that have .
+UPDATE layoffs_staging4
+SET country = TRIM(TRAILING '.' FROM country)
+WHERE country LIKE 'United States%';
+
+-- Update the date format to datetime
+UPDATE layoffs_staging4
+SET `date` = STR_TO_DATE(`date`, '%m/%d/%Y');
+
+-- Change the date data type to datetime
+ALTER TABLE layoffs_staging4
+MODIFY COLUMN `date` DATE;
+
+
+-- REMOVE NULL/BLANK VALUES
+UPDATE layoffs_staging4
+SET industry = NULL
+WHERE industry LIKE '';
+
+-- Fill in NULL industry with industry data that has the same company
+SELECT *
+FROM layoffs_staging4
+WHERE company LIKE 'Airbnb';
+
+SELECT *
+from layoffs_staging4 ls1
+JOIN layoffs_staging4 ls2
+	ON ls1.company = ls2.company
+WHERE ls1.industry IS NULL
+AND ls2.industry IS NOT NULL
+;
+
+UPDATE layoffs_staging4 ls1
+JOIN layoffs_staging4 ls2
+	ON ls1.company = ls2.company
+SET ls1.industry = ls2.industry
+WHERE ls1.industry IS NULL
+AND ls2.industry IS NOT NULL
+;
+
+-- REMOVE ROW/COLUMN
+SELECT *
+FROM layoffs_staging4
+ORDER BY 1;
+
+DELETE
+FROM layoffs_staging4
+WHERE total_laid_off IS NULL
+AND percentage_laid_off IS NULL;
+
+ALTER TABLE layoffs_staging4
+DROP column row_num
+
+
+
+
+
